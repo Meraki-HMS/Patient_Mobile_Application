@@ -51,7 +51,8 @@ import ChangeEmail from "./screens/Profile/ChangeEmail";
 import EditProfile from "./screens/Profile/EditProfile";
 import AllAppointmentsScreen from "./screens/Appointment/AllAppointmentScreen";
 import RecordDetailsScreen from "./screens/Appointment/RecordDetailsScreen";
-
+import ReceiptDetailScreen from "./screens/Billing/ReceiptDetailScreen";
+//ReceiptDetailScreen
 // Bills Icon
 
 
@@ -177,12 +178,14 @@ export default function App() {
   options={{ title: 'Record Details' }}
 />
         {/* Other Screens */}
-        
+       
+
         <Stack.Screen name="UploadRecords" component={UploadRecordsScreen} />
         <Stack.Screen name="Prescriptions" component={PrescriptionsScreen} />
         <Stack.Screen name="Notifications" component={NotificationsScreen} />
         <Stack.Screen name="DietPlan" component={DietPlanScreen} />
         <Stack.Screen name="Billing" component={BillingScreen} />
+        <Stack.Screen name="ReceiptDetail" component={ReceiptDetailScreen} />
         <Stack.Screen name="Feedback" component={FeedbackScreen} />
 
         <Stack.Screen name="AssignedDoctors" component={AssignedDoctors} />
