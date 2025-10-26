@@ -62,10 +62,19 @@ export default function NearbyHospitalsScreen({ navigation }) {
 
   const handleHospitalChange = async hospitalId => {
     setSelectedHospital(hospitalId);
+
     if (hospitalId) {
       await AsyncStorage.setItem('selectedHospitalId', hospitalId);
+
+      // 🏥 Also save hospital name for display and debugging
+      const hospitalName =
+        hospitals.find(h => h.hospital_id === hospitalId)?.name || '';
+      await AsyncStorage.setItem('hospital', hospitalName);
+
+      console.log('✅ Saved hospital:', hospitalId, hospitalName);
     } else {
       await AsyncStorage.removeItem('selectedHospitalId');
+      await AsyncStorage.removeItem('hospital');
     }
   };
 
@@ -184,15 +193,21 @@ export default function NearbyHospitalsScreen({ navigation }) {
                 ) : doctors.length === 0 ? (
                   <Text>No doctors found for this hospital</Text>
                 ) : (
-                  doctors.map(doc => (
-                    <Card key={doc._id}>
-                      <Text style={styles.title}>{doc.name}</Text>
-                      <Text style={styles.meta}>
-                        Specialization: {doc.specialization}
-                      </Text>
-                      <Text style={styles.meta}>Contact: {doc.contact}</Text>
-                    </Card>
-                  ))
+                  // ✅ Add ScrollView here
+                  <ScrollView
+                    style={{ maxHeight: 400 }} // adjust as needed
+                    showsVerticalScrollIndicator={true}
+                  >
+                    {doctors.map(doc => (
+                      <Card key={doc._id} style={{ marginBottom: 10 }}>
+                        <Text style={styles.title}>{doc.name}</Text>
+                        <Text style={styles.meta}>
+                          Specialization: {doc.specialization}
+                        </Text>
+                        <Text style={styles.meta}>Contact: {doc.contact}</Text>
+                      </Card>
+                    ))}
+                  </ScrollView>
                 )}
 
                 <TouchableOpacity

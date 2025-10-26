@@ -25,8 +25,9 @@ export default function RecentMeetingsScreen() {
       try {
         const userData = await AsyncStorage.getItem('user');
         const token = await AsyncStorage.getItem('token');
+        const hospitalId = await AsyncStorage.getItem('selectedHospitalId'); // ✅ current hospital
 
-        if (userData && token) {
+        if (userData && token && hospitalId) {
           const user = JSON.parse(userData);
 
           const res = await axios.get(
@@ -35,6 +36,7 @@ export default function RecentMeetingsScreen() {
               headers: {
                 Authorization: `Bearer ${token}`,
               },
+              params: { hospitalId }, // ✅ filter by current hospital
             },
           );
 

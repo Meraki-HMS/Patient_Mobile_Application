@@ -63,7 +63,10 @@ export default function BillingScreen() {
     );
 
   return (
-    <ScrollView style={styles.screen}>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={{ paddingBottom: 100 }}
+    >
       <Text style={styles.title}>Bills & Payments</Text>
 
       {bills.length === 0 ? (

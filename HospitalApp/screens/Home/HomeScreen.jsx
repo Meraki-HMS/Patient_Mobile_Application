@@ -27,6 +27,9 @@ export default function HomeScreen({ navigation }) {
       try {
         const userData = await AsyncStorage.getItem('user');
         const hospitalData = await AsyncStorage.getItem('hospital');
+        const selectedHospitalId = await AsyncStorage.getItem(
+          'selectedHospitalId',
+        ); // ✅ fetch selected hospital ID
         const token = await AsyncStorage.getItem('token');
         const patientId = await AsyncStorage.getItem('patientId');
 
@@ -38,22 +41,37 @@ export default function HomeScreen({ navigation }) {
             user.profileImage || user.profile_url || user.image || '';
           if (imageUrl) setUserImage(imageUrl);
 
-          // ✅ Fetch Appointments
+          // ✅ Fetch Appointments filtered by selected hospital
           if (token && (user.id || user._id)) {
-            try {
-              const pid = user.id || user._id;
-              const res = await axios.get(
-                `${API_BASE_URL}/api/patient-appointments/patient/${pid}`,
-                { headers: { Authorization: `Bearer ${token}` } },
+            const pid = user.id || user._id;
+            const res = await axios.get(
+              `${API_BASE_URL}/api/patient-appointments/patient/${pid}`,
+              { headers: { Authorization: `Bearer ${token}` } },
+            );
+            console.log('selectedHospitalId:', selectedHospitalId);
+            console.log(
+              'appointments sample:',
+              res.data.appointments?.slice(0, 2),
+            );
+            if (res.data && res.data.appointments) {
+              let activeAppointments = res.data.appointments.filter(
+                a => String(a.status).toLowerCase() !== 'cancelled',
               );
-              if (res.data && res.data.appointments) {
-                const activeAppointments = res.data.appointments.filter(
-                  a => String(a.status).toLowerCase() !== 'cancelled',
-                );
-                setSavedAppointments(activeAppointments);
+
+              if (selectedHospitalId) {
+                activeAppointments = activeAppointments.filter(a => {
+                  const appHospitalId =
+                    a.hospitalId ||
+                    a.hospital_id ||
+                    a.hospital?.hospital_id ||
+                    a.hospital?._id ||
+                    a.hospital?._id?.toString();
+
+                  return String(appHospitalId) === String(selectedHospitalId);
+                });
               }
-            } catch (err) {
-              console.log('Error fetching appointments:', err);
+
+              setSavedAppointments(activeAppointments);
             }
           }
         }
@@ -352,4 +370,54 @@ const styles = StyleSheet.create({
   },
   th: { flex: 1, fontWeight: '700', fontSize: 12, color: '#000' },
   td: { flex: 1, fontSize: 12, color: '#333' },
+  appointmentRow: {
+    backgroundColor: '#F9FBFD',
+    borderRadius: 10,
+    marginBottom: 10,
+    padding: 10,
+    borderLeftWidth: 5,
+    borderLeftColor: '#2D9CDB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+
+  rowTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+
+  doctorName: {
+    fontWeight: '700',
+    fontSize: 14,
+    color: '#000',
+  },
+
+  sessionTypeBadge: {
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    fontSize: 11,
+    fontWeight: '600',
+    overflow: 'hidden',
+  },
+
+  rowBottom: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+
+  dateText: {
+    fontSize: 12,
+    color: '#333',
+  },
+
+  timeText: {
+    fontSize: 12,
+    color: '#333',
+  },
 });

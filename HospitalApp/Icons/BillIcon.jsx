@@ -1,7 +1,7 @@
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
 
-export default function BillIcon({ focused }) {
+export default function BillIcon({ focused, size = 26 }) {
   return (
     <Svg
       xmlns="http://www.w3.org/2000/svg"

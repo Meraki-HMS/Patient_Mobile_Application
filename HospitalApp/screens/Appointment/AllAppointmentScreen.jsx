@@ -41,13 +41,37 @@ export default function AllAppointmentsScreen({ navigation }) {
             const currentDate = now.toISOString().split('T')[0];
             const currentTime = now.toTimeString().slice(0, 5);
 
-            const filteredAppointments = res.data.appointments
+            const selectedHospitalId = await AsyncStorage.getItem(
+              'selectedHospitalId',
+            );
+            console.log('selectedHospitalId:', selectedHospitalId);
+            console.log(
+              'appointments sample:',
+              res.data.appointments?.slice(0, 2),
+            );
+
+            let filteredAppointments = res.data.appointments;
+
+            // ✅ Filter by hospital ID first
+            if (selectedHospitalId) {
+              filteredAppointments = filteredAppointments.filter(a => {
+                const appHospitalId =
+                  a.hospitalId ||
+                  a.hospital_id ||
+                  a.hospital?.hospital_id ||
+                  a.hospital?._id ||
+                  a.hospital?._id?.toString();
+
+                return String(appHospitalId) === String(selectedHospitalId);
+              });
+            }
+
+            // ✅ Then filter by upcoming/cancelled logic
+            filteredAppointments = filteredAppointments
               .filter(a => {
-                // Always show cancelled appointments if their date >= today
                 if (a.status === 'cancelled' && a.date >= currentDate)
                   return true;
 
-                // Show upcoming appointments
                 if (a.status !== 'cancelled') {
                   if (a.date > currentDate) return true;
                   if (a.date === currentDate) {
@@ -55,8 +79,7 @@ export default function AllAppointmentsScreen({ navigation }) {
                     return startTime >= currentTime;
                   }
                 }
-
-                return false; // past appointments excluded
+                return false;
               })
               .sort((a, b) => {
                 const [ay, am, ad] = a.date.split('-');
@@ -64,6 +87,10 @@ export default function AllAppointmentsScreen({ navigation }) {
                 return new Date(ay, am - 1, ad) - new Date(by, bm - 1, bd);
               });
 
+            console.log(
+              'filteredAppointments count:',
+              filteredAppointments.length,
+            );
             setAppointments(filteredAppointments);
           }
         }
