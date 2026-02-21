@@ -52,8 +52,13 @@ import EditProfile from "./screens/Profile/EditProfile";
 import AllAppointmentsScreen from "./screens/Appointment/AllAppointmentScreen";
 import RecordDetailsScreen from "./screens/Appointment/RecordDetailsScreen";
 import ReceiptDetailScreen from "./screens/Billing/ReceiptDetailScreen";
+import StaffLogin from "./screens/Nurse/StaffLogin";
+import NurseDashboard from "./screens/Nurse/Dashboard/NurseDashboard";
+import DeclineReason from "./screens/Nurse/Dashboard/DeclineReason";
+import NurseForgotPasswordScreen from "./screens/Nurse/NurseForgotPasswordScreen";
 //ReceiptDetailScreen
 // Bills Icon
+import NurseTabs from "./screens/Nurse/NurseTab";
 
 
 // Navigation objects
@@ -158,6 +163,15 @@ export default function App() {
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Register" component={RegisterScreen} />
         <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+<Stack.Screen name="StaffLogin" component={StaffLogin} />
+<Stack.Screen name="NurseDashboard" component={NurseDashboard} />
+<Stack.Screen name="DeclineReason" component={DeclineReason} />
+<Stack.Screen
+  name="NurseForgotPassword"
+  component={NurseForgotPasswordScreen}
+/>
+<Stack.Screen name="NurseMain" component={NurseTabs} />
+
 
         {/* Main Tabs */}
         <Stack.Screen name="NearbyHospitals" component={NearbyHospitalsScreen} />

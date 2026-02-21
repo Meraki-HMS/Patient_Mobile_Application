@@ -100,6 +100,15 @@ const LoginScreen = ({ navigation }) => {
           Register
         </Text>
       </Text>
+      <Text style={styles.bottomText}>
+        Are you staff?{' '}
+        <Text
+          style={styles.link}
+          onPress={() => navigation.navigate('StaffLogin')}
+        >
+          Staff Login
+        </Text>
+      </Text>
     </View>
   );
 };
