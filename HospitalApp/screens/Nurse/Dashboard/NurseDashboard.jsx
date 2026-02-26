@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Modal,
   ScrollView,
+  Alert,
 } from 'react-native';
 import axios from 'axios';
 import { API_BASE_URL } from '@env';
@@ -23,16 +24,22 @@ const NurseDashboard = ({ navigation }) => {
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // NEW: State for Tabs
+  // State for Tabs
   const [activeTab, setActiveTab] = useState('all'); // 'all' | 'mine'
 
+  // Modal & Treatment States
   const [modalVisible, setModalVisible] = useState(false);
   const [treatmentPlan, setTreatmentPlan] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
 
+  // Tracking & Action States
+  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [isTodayCompleted, setIsTodayCompleted] = useState(false);
+  const [completingTask, setCompletingTask] = useState(false);
+  const [checkedItems, setCheckedItems] = useState({});
+
   const getGreeting = () => {
     const hour = new Date().getHours();
-
     if (hour < 12) return 'Good Morning,';
     if (hour < 17) return 'Good Afternoon,';
     return 'Good Evening,';
@@ -40,8 +47,8 @@ const NurseDashboard = ({ navigation }) => {
 
   const fetchPatients = async () => {
     try {
-      setLoading(true);
       const hospitalId = await AsyncStorage.getItem('hospitalId');
+      const loggedInNurseId = await AsyncStorage.getItem('userId');
 
       const res = await axios.get(
         `${API_BASE_URL}/api/admissions/allAdmitted-patients`,
@@ -50,15 +57,30 @@ const NurseDashboard = ({ navigation }) => {
 
       if (res.data?.patients) {
         const patientsWithBeds = await Promise.all(
-          res.data.patients.map(async (item, index) => {
+          res.data.patients.map(async item => {
             let bed = 'NA';
+            let isAssignedToMe = false;
 
             try {
               const tp = await axios.get(
                 `${API_BASE_URL}/treatment-plans/admission/${item._id}`,
               );
 
-              bed = tp.data?.data?.bed_assignment_id?.bed_id || 'NA';
+              const bedAssignment = tp.data?.data?.bed_assignment_id;
+
+              if (bedAssignment) {
+                bed = bedAssignment.bed_id || 'NA';
+                const assignedNurseId =
+                  bedAssignment.nurse_id?._id || bedAssignment.nurse_id;
+
+                if (
+                  assignedNurseId &&
+                  loggedInNurseId &&
+                  assignedNurseId.toString() === loggedInNurseId.toString()
+                ) {
+                  isAssignedToMe = true;
+                }
+              }
             } catch (err) {
               bed = 'NA';
             }
@@ -69,13 +91,12 @@ const NurseDashboard = ({ navigation }) => {
               name: item.fullName || 'Unknown',
               dob: item.dob,
               gender: item.gender || 'NA',
-              bedNumber: bed, // ✅ from treatment plan
+              bedNumber: bed,
               wardType: item.wardType || 'NA',
               patientType: item.patientType || 'NA',
               admissionDateTime: item.admissionDateTime,
               address: item.currentAddress || '',
-              // Static mock for assigned patient (makes first 2 assigned for UI testing)
-              isAssignedToMe: index === 0 || index === 1,
+              isAssignedToMe: isAssignedToMe,
             };
           }),
         );
@@ -91,20 +112,50 @@ const NurseDashboard = ({ navigation }) => {
 
   useFocusEffect(
     useCallback(() => {
+      setLoading(true);
       fetchPatients();
     }, []),
   );
 
-  const openTreatmentModal = async admissionId => {
+  const openTreatmentModal = async patient => {
     try {
+      setSelectedPatient(patient);
       setModalVisible(true);
       setModalLoading(true);
+      setIsTodayCompleted(false);
+      setCheckedItems({}); // Clear checkboxes initially
 
       const res = await axios.get(
-        `${API_BASE_URL}/treatment-plans/admission/${admissionId}`,
+        `${API_BASE_URL}/treatment-plans/admission/${patient.admissionId}`,
       );
 
-      setTreatmentPlan(res.data?.data || null);
+      const plan = res.data?.data;
+      setTreatmentPlan(plan || null);
+
+      if (plan && plan.daily_status && plan.daily_status.length > 0) {
+        // ✅ FAST TEST FIX: Grab the newest checklist from the array
+        const latestStatus = plan.daily_status[plan.daily_status.length - 1];
+        const isCompleted = latestStatus?.completed || false;
+
+        setIsTodayCompleted(isCompleted);
+
+        // Auto-check all the boxes if already completed
+        if (isCompleted) {
+          let autoChecked = {};
+          if (plan.medicines) {
+            plan.medicines.forEach((_, i) => (autoChecked[`med-${i}`] = true));
+          }
+          if (plan.meals) {
+            plan.meals.forEach((_, i) => (autoChecked[`meal-${i}`] = true));
+          }
+          if (plan.procedures) {
+            plan.procedures.forEach(
+              (_, i) => (autoChecked[`proc-${i}`] = true),
+            );
+          }
+          setCheckedItems(autoChecked);
+        }
+      }
     } catch (error) {
       console.log('Treatment fetch error:', error.message);
       setTreatmentPlan(null);
@@ -113,7 +164,69 @@ const NurseDashboard = ({ navigation }) => {
     }
   };
 
-  // UPDATED: Filter by search text AND the active tab
+  const handleMarkCompleted = async () => {
+    if (!treatmentPlan) return;
+
+    try {
+      setCompletingTask(true);
+      const token = await AsyncStorage.getItem('staffToken');
+
+      const res = await axios.patch(
+        `${API_BASE_URL}/treatment-plans/${treatmentPlan._id}/complete-today`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      if (res.data.success) {
+        setIsTodayCompleted(true);
+        let autoChecked = {};
+        if (treatmentPlan.medicines) {
+          treatmentPlan.medicines.forEach(
+            (_, i) => (autoChecked[`med-${i}`] = true),
+          );
+        }
+        if (treatmentPlan.meals) {
+          treatmentPlan.meals.forEach(
+            (_, i) => (autoChecked[`meal-${i}`] = true),
+          );
+        }
+        if (treatmentPlan.procedures) {
+          treatmentPlan.procedures.forEach(
+            (_, i) => (autoChecked[`proc-${i}`] = true),
+          );
+        }
+        setCheckedItems(autoChecked);
+
+        fetchPatients();
+
+        Alert.alert('Success', "Today's treatment marked as completed! ✅");
+      }
+    } catch (error) {
+      console.log(
+        'Error marking completed:',
+        error.response?.data || error.message,
+      );
+      Alert.alert(
+        'Error',
+        error.response?.data?.message ||
+          'Could not mark treatment as completed.',
+      );
+    } finally {
+      setCompletingTask(false);
+    }
+  };
+
+  const toggleCheck = key => {
+    setCheckedItems(prev => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
   const filteredPatients = patients.filter(p => {
     const matchesSearch = `${p.name} ${p.bedNumber}`
       .toLowerCase()
@@ -166,13 +279,9 @@ const NurseDashboard = ({ navigation }) => {
             <Text style={styles.demographics}>
               DOB: {item.dob ? new Date(item.dob).toLocaleDateString() : 'NA'}
             </Text>
-
             <Text style={styles.demographics}>Gender: {item.gender}</Text>
-
             <Text style={styles.demographics}>Ward: {item.wardType}</Text>
-
             <Text style={styles.demographics}>Type: {item.patientType}</Text>
-
             <Text style={styles.address} numberOfLines={1}>
               {item.address}
             </Text>
@@ -184,7 +293,7 @@ const NurseDashboard = ({ navigation }) => {
         <View style={styles.statusRow}>
           <TouchableOpacity
             style={styles.actionBtn}
-            onPress={() => openTreatmentModal(item.admissionId)}
+            onPress={() => openTreatmentModal(item)}
           >
             <Text style={styles.actionBtnText}>View Details</Text>
           </TouchableOpacity>
@@ -205,6 +314,23 @@ const NurseDashboard = ({ navigation }) => {
         />
       </SafeAreaView>
     );
+  }
+
+  // ✅ NEW: Calculate if all items are checked
+  let isAllChecked = false;
+  if (treatmentPlan) {
+    const totalMedicines = treatmentPlan.medicines?.length || 0;
+    const totalMeals = treatmentPlan.meals?.length || 0;
+    const totalProcedures = treatmentPlan.procedures?.length || 0;
+    const totalItems = totalMedicines + totalMeals + totalProcedures;
+
+    // Count how many checkedItems are 'true'
+    const checkedCount = Object.values(checkedItems).filter(
+      val => val === true,
+    ).length;
+
+    // If there are 0 items, or if the checked count matches the total count, it is fully checked
+    isAllChecked = totalItems === 0 || checkedCount === totalItems;
   }
 
   return (
@@ -243,7 +369,6 @@ const NurseDashboard = ({ navigation }) => {
           />
         </View>
 
-        {/* NEW: Tab Navigation */}
         <View style={styles.tabContainer}>
           <TouchableOpacity
             style={[styles.tabBtn, activeTab === 'all' && styles.activeTab]}
@@ -301,7 +426,16 @@ const NurseDashboard = ({ navigation }) => {
                 <ScrollView>
                   <Text style={styles.modalTitle}>Treatment Plan</Text>
 
-                  {/* ✅ Doctor Details */}
+                  {/* WARNING BANNER */}
+                  {selectedPatient && !selectedPatient.isAssignedToMe && (
+                    <View style={styles.warningBox}>
+                      <Text style={styles.warningText}>
+                        ⚠️ This patient is assigned to another nurse. Proceed
+                        with caution.
+                      </Text>
+                    </View>
+                  )}
+
                   <Text style={styles.modalSection}>Doctor:</Text>
                   <Text>Dr. {treatmentPlan?.doctor_id?.name || 'N/A'}</Text>
 
@@ -309,82 +443,170 @@ const NurseDashboard = ({ navigation }) => {
                     {treatmentPlan?.doctor_id?.specialization || ''}
                   </Text>
 
-                  {/* Diagnosis */}
                   <Text style={styles.modalSection}>Diagnosis:</Text>
-                  <Text>{treatmentPlan.diagnosis}</Text>
+                  <Text style={{ marginBottom: 10 }}>
+                    {treatmentPlan.diagnosis}
+                  </Text>
 
-                  {/* Medicines */}
+                  {/* MEDICINES */}
                   <Text style={styles.modalSection}>Medicines:</Text>
                   {treatmentPlan.medicines?.length ? (
-                    treatmentPlan.medicines.map((med, i) => (
-                      <View key={i} style={{ marginBottom: 6 }}>
-                        <Text>• {med.name}</Text>
-                        <Text style={{ marginLeft: 10 }}>
-                          Dosage: {med.dosage}
-                        </Text>
-                        <Text style={{ marginLeft: 10 }}>
-                          Frequency: {med.frequency}
-                        </Text>
-                      </View>
-                    ))
+                    treatmentPlan.medicines.map((med, i) => {
+                      const key = `med-${i}`;
+                      return (
+                        <TouchableOpacity
+                          key={key}
+                          style={styles.checkboxRow}
+                          onPress={() => toggleCheck(key)}
+                          disabled={isTodayCompleted}
+                        >
+                          <View
+                            style={[
+                              styles.checkbox,
+                              checkedItems[key] && styles.checkboxActive,
+                            ]}
+                          >
+                            {checkedItems[key] && (
+                              <Text style={styles.checkmark}>✓</Text>
+                            )}
+                          </View>
+                          <View>
+                            <Text style={{ fontWeight: '600' }}>
+                              {med.name}
+                            </Text>
+                            <Text style={{ fontSize: 12, color: '#666' }}>
+                              Dosage: {med.dosage} | Freq: {med.frequency}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })
                   ) : (
                     <Text>No medicines</Text>
                   )}
 
-                  {/* Meals */}
+                  {/* MEALS */}
                   <Text style={styles.modalSection}>Meals:</Text>
                   {treatmentPlan.meals?.length ? (
-                    treatmentPlan.meals.map((meal, i) => (
-                      <View key={i} style={{ marginBottom: 8 }}>
-                        <Text style={{ fontWeight: '600' }}>
-                          • {meal.meal_time}
-                        </Text>
-
-                        {meal.items?.map((item, index) => (
-                          <Text key={index} style={{ marginLeft: 10 }}>
-                            - {item}
-                          </Text>
-                        ))}
-
-                        {meal.instructions && (
-                          <Text
-                            style={{
-                              marginLeft: 10,
-                              fontStyle: 'italic',
-                            }}
+                    treatmentPlan.meals.map((meal, i) => {
+                      const key = `meal-${i}`;
+                      return (
+                        <TouchableOpacity
+                          key={key}
+                          style={styles.checkboxRow}
+                          onPress={() => toggleCheck(key)}
+                          disabled={isTodayCompleted}
+                        >
+                          <View
+                            style={[
+                              styles.checkbox,
+                              checkedItems[key] && styles.checkboxActive,
+                            ]}
                           >
-                            Instructions: {meal.instructions}
-                          </Text>
-                        )}
-                      </View>
-                    ))
+                            {checkedItems[key] && (
+                              <Text style={styles.checkmark}>✓</Text>
+                            )}
+                          </View>
+                          <View>
+                            <Text style={{ fontWeight: '600' }}>
+                              {meal.meal_time}
+                            </Text>
+                            {meal.items?.map((item, index) => (
+                              <Text
+                                key={index}
+                                style={{ fontSize: 13, color: '#555' }}
+                              >
+                                - {item}
+                              </Text>
+                            ))}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })
                   ) : (
                     <Text>No meal plan</Text>
                   )}
 
-                  {/* Procedures */}
+                  {/* PROCEDURES */}
                   <Text style={styles.modalSection}>Procedures:</Text>
                   {treatmentPlan.procedures?.length ? (
-                    treatmentPlan.procedures.map((proc, i) => (
-                      <Text key={i}>• {proc.name || proc}</Text>
-                    ))
+                    treatmentPlan.procedures.map((proc, i) => {
+                      const key = `proc-${i}`;
+                      return (
+                        <TouchableOpacity
+                          key={key}
+                          style={styles.checkboxRow}
+                          onPress={() => toggleCheck(key)}
+                          disabled={isTodayCompleted}
+                        >
+                          <View
+                            style={[
+                              styles.checkbox,
+                              checkedItems[key] && styles.checkboxActive,
+                            ]}
+                          >
+                            {checkedItems[key] && (
+                              <Text style={styles.checkmark}>✓</Text>
+                            )}
+                          </View>
+                          <Text style={{ fontWeight: '500' }}>
+                            {proc.name || proc}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })
                   ) : (
                     <Text>No procedures</Text>
                   )}
 
                   <Text style={styles.modalSection}>Notes:</Text>
-                  <Text>{treatmentPlan.notes}</Text>
+                  <Text style={{ fontStyle: 'italic', color: '#555' }}>
+                    {treatmentPlan.notes}
+                  </Text>
                 </ScrollView>
 
-                {/* Static Mark as Completed Button */}
-                <TouchableOpacity
-                  style={styles.completeBtn}
-                  onPress={() => console.log('Mark as completed clicked')}
-                >
-                  <Text style={{ color: '#fff', fontWeight: '600' }}>
-                    Mark as Completed
-                  </Text>
-                </TouchableOpacity>
+                {/* STATUS BADGE OR COMPLETION BUTTON */}
+                {isTodayCompleted ? (
+                  <View style={styles.completedBadge}>
+                    <Text
+                      style={{
+                        color: '#27AE60',
+                        fontWeight: 'bold',
+                        fontSize: 16,
+                      }}
+                    >
+                      ✅ Today's Treatment Completed
+                    </Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    // ✅ NEW: Apply disabled styling if not all checked
+                    style={[
+                      styles.completeBtn,
+                      (!isAllChecked || completingTask) && styles.disabledBtn,
+                    ]}
+                    onPress={handleMarkCompleted}
+                    // ✅ NEW: Disable button if API is running OR if boxes aren't fully checked
+                    disabled={!isAllChecked || completingTask}
+                  >
+                    {completingTask ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text
+                        style={{
+                          color: '#fff',
+                          fontWeight: '600',
+                          fontSize: 16,
+                        }}
+                      >
+                        {/* ✅ NEW: Change text dynamically to guide the nurse */}
+                        {isAllChecked
+                          ? 'Mark as Completed'
+                          : 'Check all items first'}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                )}
               </>
             ) : (
               <Text>No Active Treatment Plan</Text>
@@ -424,7 +646,7 @@ const styles = StyleSheet.create({
 
   searchBox: {
     marginHorizontal: 20,
-    marginBottom: 10, // Adjusted margin to fit tabs nicely
+    marginBottom: 10,
     backgroundColor: '#fff',
     borderRadius: 16,
     paddingHorizontal: 16,
@@ -434,7 +656,6 @@ const styles = StyleSheet.create({
 
   searchInput: { fontSize: 15 },
 
-  // NEW: Styles for the Tabs
   tabContainer: {
     flexDirection: 'row',
     marginHorizontal: 20,
@@ -562,6 +783,7 @@ const styles = StyleSheet.create({
 
   modalSection: {
     marginTop: 10,
+    marginBottom: 6,
     fontWeight: '600',
   },
 
@@ -572,12 +794,66 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
   },
-
+  // ✅ NEW: Style for when the button is disabled
+  disabledBtn: {
+    backgroundColor: '#A0A4A8', // A grey color so it looks unclickable
+  },
+  completedBadge: {
+    marginTop: 15,
+    backgroundColor: '#E8FDF3',
+    padding: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#2ECC71',
+  },
+  warningBox: {
+    backgroundColor: '#FFF4E5',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 15,
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF9F43',
+  },
+  warningText: {
+    color: '#D37711',
+    fontWeight: '600',
+    fontSize: 13,
+  },
   closeBtn: {
     marginTop: 10,
     backgroundColor: '#2D9CDB',
     padding: 12,
     borderRadius: 10,
     alignItems: 'center',
+  },
+
+  // STYLES FOR CHECKBOX UI
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    backgroundColor: '#F8F9FA',
+    padding: 10,
+    borderRadius: 8,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderWidth: 2,
+    borderColor: '#2D9CDB',
+    borderRadius: 6,
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  checkboxActive: {
+    backgroundColor: '#2D9CDB',
+  },
+  checkmark: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
 });

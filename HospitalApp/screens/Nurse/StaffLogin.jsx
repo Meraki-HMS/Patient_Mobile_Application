@@ -43,6 +43,9 @@ const StaffLogin = ({ navigation }) => {
 
       const data = await response.json();
 
+      // 🔍 Print the exact response to your terminal
+      console.log('BACKEND RESPONSE:', data);
+
       if (!response.ok) {
         Alert.alert('Login Failed', data.message || 'Invalid credentials');
         return;
@@ -53,12 +56,24 @@ const StaffLogin = ({ navigation }) => {
       await AsyncStorage.setItem('hospitalId', hospitalId);
       await AsyncStorage.setItem('staffEmail', email);
 
-      // ✅ SUCCESS ALERT (same as patient login)
-      Alert.alert('Success', 'Login successful!');
+      // ✅ SAFETY CHECK: Only set the ID if it actually exists
+      if (data.nurse && data.nurse._id) {
+        await AsyncStorage.setItem('userId', String(data.nurse._id));
+      } else {
+        Alert.alert(
+          'Error',
+          "Server didn't send the Nurse ID. Check your backend console.",
+        );
+        return; // Stop here if we don't have the ID
+      }
 
+      // ✅ SUCCESS ALERT
+      Alert.alert('Success', 'Login successful!');
       navigation.replace('NurseMain');
-    } catch {
-      Alert.alert('Error', 'Server not reachable');
+    } catch (error) {
+      // 🐛 THIS SHOWS THE REAL ERROR
+      console.error('ACTUAL CRASH ERROR:', error);
+      Alert.alert('Error', String(error.message));
     }
   };
 
